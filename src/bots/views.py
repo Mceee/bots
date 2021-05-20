@@ -109,7 +109,7 @@ def incoming(request, *kw, **kwargs):
             cleaned_data = {'page': 1, 'sortedby': 'idta', 'sortedasc': False, 'lastrun': lastrun,
                             'idroute': idroute}  # go to default incoming-query using these default parameters
     else:  # request.method == 'POST'
-        print('XXXXXX2')
+        #print('XXXXXX2')
         if 'fromselect' in request.POST:  # from SelectIncoming form
             formin = forms.SelectIncoming(request.POST)
             if not formin.is_valid():
