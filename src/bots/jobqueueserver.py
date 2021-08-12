@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -14,6 +15,11 @@ import subprocess
 import queue
 import sys
 import threading
+
+try:  # python3
+    import xmlrpc.client as xmlrpclib
+except ImportError:  # python2
+    import xmlrpclib
 
 from builtins import *  # noqa
 # from builtins import (
@@ -100,13 +106,19 @@ def maxruntimeerror(logger, maxruntime, jobnumber, task_to_run):
         u'Job {} exceeded maxruntime of {} minutes:\n {}'.format(jobnumber, maxruntime, task_to_run))
 
 
-def launcher(logger, queue, lauchfrequency, maxruntime):
+def launcher(logger, port, lauchfrequency, maxruntime):
     """"""
+    try:
+        remote_server = xmlrpclib.ServerProxy(
+            'http://localhost:' + unicode(botsglobal.ini.getint('jobqueue', 'port', 28082)))
+    except socket.error as e:
+        print('socket.error', e)
+        return 1  # jobqueueserver server not active
     maxseconds = maxruntime * 60
     time.sleep(3)  # allow jobqserver to start
     while True:
         time.sleep(lauchfrequency)
-        job = queue.get(block=True, timeout=None)
+        job = remote_server.getjob()
         if job:
             jobnumber = job[1]
             task_to_run = job[2]
@@ -138,7 +150,6 @@ def launcher(logger, queue, lauchfrequency, maxruntime):
                     'Error starting job {}:\n {}\n\n {}'.format(jobnumber, task_to_run, e))
 
             timer_thread.cancel()
-            queue.task_done()
 
 
 @click.command()
@@ -155,7 +166,6 @@ def start(configdir):
     if not botsglobal.ini.getboolean('jobqueue', 'enabled', False):
         print('Error: bots jobqueue cannot start; not enabled in {}/bots.ini'.format(configdir))
         sys.exit(1)
-    nr_threads = 2  # botsglobal.ini.getint('jobqueue','nr_threads')
     process_name = 'jobqueue'
 
     logger = botsinit.initserverlogging(process_name)
@@ -167,17 +177,15 @@ def start(configdir):
                {'process_name': process_name, 'port': port})
 
     # start launcher thread
-    q = queue.Queue()
 
     lauchfrequency = botsglobal.ini.getint('jobqueue', 'lauchfrequency', 5)
     maxruntime = botsglobal.ini.getint('settings', 'maxruntime', 60)
-    for thread in range(nr_threads):
-        launcher_thread = threading.Thread(
+    launcher_thread = threading.Thread(
             name='launcher',
             target=launcher,
-            args=(logger, q, lauchfrequency, maxruntime),
+            args=(logger, port, lauchfrequency, maxruntime),
             )
-        launcher_thread.start()
+    launcher_thread.start()
 
     # the main thread is the xmlrpc server:
     # all adding, getting etc for jobqueue is done via xmlrpc.
